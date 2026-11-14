@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>LongShot 长截图</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #17191d; color: #e8eaf0;
+    font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif; }
+  .bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 10px; align-items: center;
+    padding: 10px 16px; background: #1d2026; border-bottom: 1px solid #2b2f38; }
+  .bar .meta { color: #9aa3b2; font-size: 12.5px; margin-right: auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button { all: unset; cursor: pointer; padding: 7px 14px; border-radius: 8px;
+    background: #2f6fed; color: #fff; font: 13px system-ui; white-space: nowrap; }
+  button.ghost { background: #2a2e37; }
+  button:hover { filter: brightness(1.15); }
+  button:disabled { opacity: .45; cursor: default; }
+  #stage { overflow: auto; height: calc(100vh - 53px); display: flex; justify-content: center; }
+  #stage img { display: block; }
+  .center { height: calc(100vh - 53px); display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px; color: #9aa3b2; }
+  .err { color: #ff7b72; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <div class="meta" id="meta">读取中…</div>
+  <button id="fitBtn">适应宽度</button>
+  <button id="copyBtn" class="ghost">复制到剪贴板</button>
+  <button id="saveBtn">下载 PNG（自选位置）</button>
+</div>
+<div id="stage" class="center"><div id="msg">正在传输长图…</div></div>
+<script src="viewer.js"></script>
+</body>
+</html>

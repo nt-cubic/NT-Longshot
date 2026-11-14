@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Fixture A · 虚拟化无限列表（模拟 Twitter 时间线）</title>
+<style>
+  body { margin: 0; font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif; }
+  #spacer { position: relative; }
+  .row { position: absolute; left: 0; right: 0; height: 64px; box-sizing: border-box;
+    border-bottom: 1px solid rgba(0,0,0,.1); display: flex; align-items: center; padding: 0 16px; }
+  .row b { margin-right: 12px; min-width: 72px; }
+  #loading { position: fixed; top: 8px; right: 12px; background: #3478f6; color: #fff;
+    padding: 4px 12px; border-radius: 6px; display: none; z-index: 9; }
+</style>
+</head>
+<body>
+<div id="spacer"></div>
+<div id="loading">加载中…</div>
+<script>
+  // 虚拟化：只渲染可视区 ±缓冲 的行，滚过的行从 DOM 卸载（模拟 Twitter 时间线）
+  // 滚近底部异步追加 120 行（模拟无限流），600ms 延迟用于测试 settle 等待
+  const ROW_H = 64;
+  let items = Array.from({ length: 120 }, (_, i) => i);
+  const spacer = document.getElementById('spacer');
+  const rendered = new Map();
+  let loading = false;
+
+  function render() {
+    const start = Math.max(0, Math.floor(scrollY / ROW_H) - 5);
+    const end = Math.min(items.length, start + Math.ceil(innerHeight / ROW_H) + 10);
+    const keep = new Set();
+    for (let i = start; i < end; i++) {
+      keep.add(i);
+      if (!rendered.has(i)) {
+        const d = document.createElement('div');
+        d.className = 'row';
+        d.style.top = i * ROW_H + 'px';
+        d.style.background = `hsl(${(i * 37) % 360} 65% 88%)`;
+        d.innerHTML = `<b>#${i}</b><span>虚拟行 ${i} / 共 ${items.length} 行</span>`;
+        spacer.appendChild(d);
+        rendered.set(i, d);
+      }
+    }
+    for (const [i, d] of rendered) if (!keep.has(i)) { d.remove(); rendered.delete(i); }
+    spacer.style.height = items.length * ROW_H + 'px';
+  }
+
+  addEventListener('scroll', () => {
+    render();
+    if (!loading && items.length < 600 && scrollY + innerHeight > items.length * ROW_H - 800) {
+      loading = true;
+      document.getElementById('loading').style.display = 'block';
+      setTimeout(() => {
+        const base = items.length;
+        items = items.concat(Array.from({ length: 120 }, (_, k) => base + k));
+        loading = false;
+        document.getElementById('loading').style.display = 'none';
+        render();
+      }, 600);
+    }
+  });
+  render();
+</script>
+</body>
+</html>

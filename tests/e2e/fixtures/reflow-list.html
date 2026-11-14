@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Fixture D2 · 回流压力（模拟 Twitter 引用推文媒体异步加载）</title>
+<style>
+  body { margin: 0; font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif; }
+  .row { border-bottom: 1px solid rgba(0,0,0,.1); padding: 10px 16px; }
+  .row h3 { margin: 4px 0; }
+  .quote { border: 1px solid #ccc; border-radius: 10px; padding: 10px; margin: 8px 0; background: #f4f5f7; }
+  .ph { background: #d8dde5; color: #67707e; display: flex; align-items: center; justify-content: center; }
+  .ph img { width: 100%; display: block; }
+</style>
+</head>
+<body>
+<div id="list"></div>
+<script>
+  // 复现 Twitter 的回流场景：媒体在"完全进入视口后"才延迟加载（无预载余量），
+  // 加载完成后下方内容整体下移数百像素——正是导致重复拼接的失败模式
+  const HUE = (i) => `hsl(${(i * 37) % 360} 65% 90%)`;
+  const list = document.getElementById('list');
+  const N = 30;
+  for (let i = 0; i < N; i++) {
+    const d = document.createElement('div');
+    d.className = 'row';
+    d.style.background = HUE(i);
+    d.innerHTML = `<h3>行 ${i}</h3><p>第 ${i} 行正文。回归压力测试：媒体完全进入视口后才加载。</p>`;
+    if (i % 4 === 2) {
+      const h = 240 + (i % 3) * 120; // 240 / 360 / 480px 的媒体块
+      d.innerHTML += `<div class="quote"><b>引用卡片 ${i}</b>
+        <div class="ph" data-i="${i}" data-h="${h}" style="height:60px">媒体加载前占位（矮）</div></div>`;
+    }
+    list.appendChild(d);
+  }
+  const io = new IntersectionObserver((es) => {
+    for (const e of es) {
+      if (!e.isIntersecting) continue;
+      const ph = e.target;
+      io.unobserve(ph);
+      const i = ph.dataset.i, h = +ph.dataset.h;
+      setTimeout(() => { // 模拟网络延迟：完全可见后才突然长高
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="${h}">
+          <rect width="100%" height="100%" fill="hsl(${i * 47},70%,80%)"/>
+          <text x="50%" y="50%" font-size="40" text-anchor="middle" dominant-baseline="middle" fill="#123">媒体 ${i}（${h}px）</text></svg>`;
+        ph.style.height = 'auto';
+        ph.innerHTML = `<img src="data:image/svg+xml,${encodeURIComponent(svg)}">`;
+      }, 500);
+    }
+  }, { threshold: 1.0, rootMargin: '0px' }); // 无预载余量：完全可见才开始
+  document.querySelectorAll('.ph').forEach((p) => io.observe(p));
+</script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Fixture C · Discord 式内层滚动（模拟 Discord 频道）</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif; background: #313338; color: #dbdee1; }
+  .guilds { width: 72px; background: #1e1f22; flex: none; }
+  .channels { width: 240px; background: #2b2d31; padding: 12px; box-sizing: border-box; flex: none; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .chan-header { height: 48px; flex: none; border-bottom: 1px solid #26282c;
+    display: flex; align-items: center; padding: 0 16px; }
+  .scroller { flex: 1; overflow-y: scroll; }
+  #jumpBar { position: absolute; left: 12px; right: 12px; bottom: 10px; height: 40px;
+    background: #00b0f4; color: #fff; display: none; align-items: center; justify-content: space-between;
+    padding: 0 14px; border-radius: 8px; z-index: 5; font-size: 13px; }
+  .scroller { flex: 1; overflow-y: scroll; }
+  .msg { display: flex; gap: 12px; padding: 6px 16px; box-sizing: border-box; align-items: center; }
+  .msg .avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+  .msg .name { font-weight: 600; }
+  .divider { position: sticky; top: 0; background: #313338; z-index: 2; text-align: center;
+    font-size: 12px; color: #949ba4; padding: 10px 0; border-bottom: 1px solid #26282c; }
+  .tip { text-align: center; color: #949ba4; padding: 14px; }
+</style>
+</head>
+<body>
+  <div class="guilds"></div>
+  <div class="channels"><b># 长截图测试频道</b>
+    <p style="color:#949ba4;font-size:13px">内层滚动容器 + 虚拟化 + 向上加载历史 + sticky 日期分隔条。单击消息区即可截取整个聊天流。</p>
+  </div>
+  <div class="main">
+    <div class="chan-header"><b># 长截图测试频道</b></div>
+    <div class="scroller" id="scroller">
+      <div class="tip" id="topTip">加载历史消息…</div>
+      <div id="topSpacer"></div>
+      <div id="inner"></div>
+      <div id="bottomSpacer"></div>
+    </div>
+    <div id="jumpBar"><span>您正在查看历史消息</span><b>跳转至当前</b></div>
+  </div>
+<script>
+  // 虚拟化（in-flow 渲染窗口）：只渲染可视 ±缓冲 的条目，滚过的条目从 DOM 卸载
+  // 向上滚近顶部：异步"加载历史"前插 60 条并补偿 scrollTop（模拟 Discord）
+  // 向下滚近底部：异步追加新消息（无限流探测用）
+  const scroller = document.getElementById('scroller');
+  const topSpacer = document.getElementById('topSpacer');
+  const bottomSpacer = document.getElementById('bottomSpacer');
+  const inner = document.getElementById('inner');
+  const NAMES = ['小明', '阿花', 'David', '小刚', 'Eve'];
+  const COLORS = ['#5fae59', '#da7ca7', '#5865f2', '#e8a33d', '#3ba7c3'];
+
+  let items = [];      // {type:'msg', i, h} | {type:'divider', h:36, label}
+  let nextId = 600;    // 初始消息 id 从 600 开始，模拟"上面还有历史"
+  let minId = 600;     // 历史消息向下递减分配
+  function appendMsgs(n) {
+    for (let k = 0; k < n; k++) {
+      const i = nextId++;
+      if (i % 40 === 0) items.push({ type: 'divider', h: 36, label: `2026年11月${(i / 40 | 0) - 14}日` });
+      items.push({ type: 'msg', i, h: i % 3 ? 60 : 88 });
+    }
+  }
+  function prependMsgs(n) {
+    const add = [];
+    const base = minId - n;
+    for (let k = 0; k < n; k++) {
+      const i = base + k;
+      if (i % 40 === 0) add.push({ type: 'divider', h: 36, label: `2026年10月${(i / 40 | 0) + 1}日` });
+      add.push({ type: 'msg', i, h: i % 3 ? 60 : 88 });
+    }
+    minId = base;
+    items = add.concat(items);
+  }
+  appendMsgs(150);
+
+  let offs = [];
+  function calcOffsets() {
+    offs = [0];
+    for (const it of items) offs.push(offs[offs.length - 1] + it.h);
+  }
+  calcOffsets();
+  const totalH = () => offs[items.length];
+
+  let lastLo = -1, lastHi = -1;
+  function render() {
+    const st = scroller.scrollTop, vh = scroller.clientHeight;
+    let lo = 0;
+    while (lo < items.length && offs[lo + 1] <= st - 300) lo++;
+    let hi = lo;
+    while (hi < items.length && offs[hi] < st + vh + 300) hi++;
+    topSpacer.style.height = offs[lo] + 'px';
+    bottomSpacer.style.height = (totalH() - offs[hi]) + 'px';
+    if (lo !== lastLo || hi !== lastHi) {
+      lastLo = lo; lastHi = hi;
+      const frag = document.createDocumentFragment();
+      for (let i = lo; i < hi; i++) {
+        const it = items[i];
+        const d = document.createElement('div');
+        if (it.type === 'divider') {
+          d.className = 'divider';
+          d.textContent = it.label;
+        } else {
+          d.className = 'msg';
+          d.style.height = it.h + 'px';
+          const ui = it.i % NAMES.length;
+          d.innerHTML = `<div class="avatar" style="background:${COLORS[ui]}"></div>
+            <div><div class="name" style="color:${COLORS[ui]}">${NAMES[ui]}</div>
+            <div>消息 #${it.i} —— 虚拟化消息，滚动范围外会被卸载。</div></div>`;
+        }
+        frag.appendChild(d);
+      }
+      inner.replaceChildren(frag);
+    }
+  }
+
+  let loadingUp = false, loadingDown = false;
+  const jumpBar = document.getElementById('jumpBar');
+  scroller.addEventListener('scroll', () => {
+    // Discord 行为：离开底部就显示"跳转至当前"条（absolute 定位，贴底）
+    jumpBar.style.display =
+      scroller.scrollTop < scroller.scrollHeight - scroller.clientHeight - 10 ? 'flex' : 'none';
+    render();
+    if (!loadingUp && scroller.scrollTop < 300) {
+      loadingUp = true;
+      document.getElementById('topTip').style.display = 'block';
+      setTimeout(() => {
+        const added = 60;
+        const before = totalH();
+        prependMsgs(added);
+        calcOffsets();
+        render();
+        scroller.scrollTop += totalH() - before; // 保持视口稳定（Discord 行为）
+        loadingUp = false;
+        document.getElementById('topTip').style.display = 'none';
+        lastLo = lastHi = -1; render();
+      }, 700);
+    }
+    if (!loadingDown && items.length < 400 && scroller.scrollTop + scroller.clientHeight > totalH() - 100) {
+      loadingDown = true;
+      setTimeout(() => {
+        appendMsgs(40);
+        calcOffsets();
+        lastLo = lastHi = -1;
+        render();
+        loadingDown = false;
+      }, 500);
+    }
+  });
+  render();
+</script>
+</body>
+</html>
