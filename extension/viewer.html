@@ -16,8 +16,9 @@
   button.ghost { background: #2a2e37; }
   button:hover { filter: brightness(1.15); }
   button:disabled { opacity: .45; cursor: default; }
-  #stage { overflow: auto; height: calc(100vh - 53px); display: flex; justify-content: center; }
-  #stage img { display: block; }
+  /* 不用 flex 居中：Chrome 会把溢出方向滚不到的起点侧直接裁掉（顶部不可达） */
+  #stage { overflow: auto; height: calc(100vh - 53px); }
+  #stage img { display: block; margin: 0 auto; }
   .center { height: calc(100vh - 53px); display: flex; align-items: center; justify-content: center;
     flex-direction: column; gap: 12px; color: #9aa3b2; }
   .err { color: #ff7b72; }

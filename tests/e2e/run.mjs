@@ -22,10 +22,16 @@ const FILES = ['selector.js', 'capture.js', 'stitch.js', 'hud.js']
 
 // ── 静态服务器 ──
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.png': 'image/png' };
+const EXT = path.join(HERE, '..', '..', 'extension');
 const server = http.createServer((req, res) => {
-  const p = path.join(FIXTURES, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  let p = path.join(FIXTURES, rel);
   if (!p.startsWith(FIXTURES) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) {
-    res.writeHead(404); res.end('404'); return;
+    p = path.join(EXT, rel); // 回退：viewer.html / viewer.js 等扩展页面
+  }
+  if (!p.startsWith(FIXTURES) && !p.startsWith(EXT)) { res.writeHead(404); res.end(); return; }
+  if (!fs.existsSync(p) || fs.statSync(p).isDirectory()) {
+    res.writeHead(404); res.end(); return;
   }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(p)] ?? 'application/octet-stream' });
   fs.createReadStream(p).pipe(res);
@@ -48,10 +54,70 @@ const cases = {
   e: { url: `http://127.0.0.1:${PORT}/reflow-list.html`, dpr: 1, mode: 'drag', rect: [60, 80, 1000, 700] },
   // F：视频页——rAF 噪声 canvas 模拟播放器（YouTube/Bilibili 卡死场景），掩码必须生效
   f: { url: `http://127.0.0.1:${PORT}/video-page.html`, dpr: 1, mode: 'drag', rect: [10, 60, 1270, 700], assertLowConf: true },
+  // G：查看器页——长图顶部必须可达（flex 居中裁剪顶部溢出的回归防护）
+  g: { url: `http://127.0.0.1:${PORT}/viewer.html#gtest`, dpr: 1, mode: 'viewer', imgW: 1081, imgH: 7621 },
 };
 
 const selected = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(cases);
 const results = [];
+
+// 查看器用例：假端口喂一张带"顶部标记"的长图，断言顶部可达 + 适应宽度生效
+async function runViewerCase(cfg) {
+  const browser = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    args: ['--no-first-run', '--hide-scrollbars'],
+    defaultViewport: { width: 1280, height: 800, deviceScaleFactor: 1 },
+  });
+  try {
+    const page = await browser.newPage();
+    page.on('pageerror', (e) => console.log(`[pageerror] ${e.message}`));
+    await page.evaluateOnNewDocument((w, h) => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
+      x.fillStyle = '#e33'; x.fillRect(0, 0, w, 90);
+      x.fillStyle = '#111'; x.font = '48px sans-serif'; x.fillText('TOP OF IMAGE 顶部', 30, 60);
+      for (let y = 100; y < h - 100; y += 4) { x.fillStyle = `rgb(${y / 40 | 0},${(y * 2) % 255 | 0},120)`; x.fillRect(0, y, w, 2); }
+      x.fillStyle = '#33e'; x.fillRect(0, h - 90, w, 90);
+      const dataUrl = c.toDataURL('image/png');
+      window.chrome = { runtime: { connect: () => ({
+        onMessage: { addListener: (fn) => setTimeout(() => fn({
+          ok: true, dataUrl,
+          meta: { width: w, height: h, frames: 1, note: '', title: '查看器测试', url: 'https://example.com/test' },
+        }), 120) },
+        onDisconnect: { addListener: () => {} },
+      }) } };
+    }, cfg.imgW, cfg.imgH);
+    await page.goto(cfg.url, { waitUntil: 'load', timeout: 15000 });
+    await page.waitForSelector('#stage img', { timeout: 15000 });
+    await new Promise((r) => setTimeout(r, 300));
+    const m = await page.evaluate(() => {
+      const img = document.querySelector('#stage img');
+      const stage = document.getElementById('stage');
+      stage.scrollTop = 0;
+      return {
+        imgW: img.clientWidth, imgH: img.clientHeight,
+        natural: [img.naturalWidth, img.naturalHeight],
+        stageW: stage.clientWidth,
+        scrollHeight: stage.scrollHeight,
+        topOffset: +(img.getBoundingClientRect().top - stage.getBoundingClientRect().top).toFixed(1),
+        styleWidth: img.style.width,
+      };
+    });
+    if (m.topOffset !== 0) throw new Error(`顶部不可达：img 顶边偏移 ${m.topOffset}px`);
+    if (m.scrollHeight < m.natural[1]) throw new Error(`内容被裁剪：scrollHeight ${m.scrollHeight} < 图高 ${m.natural[1]}`);
+    if (!m.styleWidth) throw new Error('applySize 未执行（适应宽度样式缺失）');
+    if (m.imgW !== Math.min(m.stageW, m.natural[0])) {
+      throw new Error(`适应宽度异常：img ${m.imgW}px，期望 ${Math.min(m.stageW, m.natural[0])}px（不超过原始宽度）`);
+    }
+    console.log(`查看器: ${m.imgW}×${m.imgH} 顶部可达 ✓ 适应宽度 ✓ 全量可滚 ✓`);
+    return { w: m.imgW, h: m.imgH };
+  } finally {
+    await browser.close();
+  }
+}
 
 async function preparePage(browser, cfg) {
   const page = await browser.newPage();
@@ -80,6 +146,16 @@ for (const name of selected) {
   const cfg = cases[name];
   if (!cfg) { console.log(`跳过未知用例 ${name}`); continue; }
   console.log(`\n===== ${name} =====`);
+  if (cfg.mode === 'viewer') {
+    try {
+      const r = await runViewerCase(cfg);
+      results.push({ name, ok: true, ...r });
+    } catch (e) {
+      console.log(`失败: ${e.message}`);
+      results.push({ name, ok: false, error: e.message });
+    }
+    continue;
+  }
   let browser;
   try {
     browser = await puppeteer.launch({
@@ -134,7 +210,7 @@ for (const name of selected) {
         }
         if (hit > n * 0.3) barRows++;
       }
-      const log = LongShot.lastStats.frameLog ?? [];
+      const log = (LongShot.lastStats.frameLog ?? []).filter((e) => e.f !== -1); // 排除跳变遥测
       let dup = null, crawl = null, runLen = 0;
       for (let i = 1; i < log.length; i++) {
         if (log[i].y === log[i - 1].y && log[i].app > 50 && !dup) dup = { i, y: log[i].y, app: log[i].app };

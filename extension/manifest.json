@@ -1,18 +1,34 @@
 {
   "manifest_version": 3,
   "name": "LongShot 长截图",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "拖选范围滚动长截图：像素级重叠拼接，支持 Twitter / Discord / 微博等虚拟化页面。",
-  "permissions": ["activeTab", "scripting", "downloads"],
-  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
-  "background": { "service_worker": "background.js" },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "LongShot 长截图（Alt+Shift+S）",
-    "default_icon": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" }
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
   },
   "commands": {
     "start-capture": {
-      "suggested_key": { "default": "Alt+Shift+S" },
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
       "description": "开始长截图"
     }
   }

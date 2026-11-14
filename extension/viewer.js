@@ -33,8 +33,9 @@
     meta = m;
     metaEl.textContent = `${m.width} × ${m.height} px · ${m.frames} 帧 · 来源：${m.title || ''}${m.note ? ' · ' + m.note : ''}`;
     img = document.createElement('img');
-    img.src = dataUrl;
+    // onload 必须先于 src 挂接：data URL 解码极快，后挂会错过首帧适配
     img.onload = () => {
+      stage.className = ''; // 移除占位用的 center：flex 居中会让顶部溢出不可达
       stage.innerHTML = '';
       stage.appendChild(img);
       applySize();
@@ -42,6 +43,7 @@
       fetch(dataUrl).then((r) => r.blob()).then((b) => { blob = b; });
     };
     img.onerror = () => setMsg('图片解码失败', true);
+    img.src = dataUrl;
   }
 
   document.getElementById('fitBtn').onclick = (e) => {
